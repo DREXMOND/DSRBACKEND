@@ -53,7 +53,7 @@ const INTERNAL_SECRET =
 ================================ */
 
 const allowedOrigins = [
-  "https://yourwebsite.com",
+  "https://demon-slayer.rf.gd",
   "http://127.0.0.1:5500",
   "http://localhost:5500"
 ]
