@@ -2,56 +2,58 @@ import express from "express"
 import cors from "cors"
 
 const app = express()
+
+// 🔥 CRITICAL: Enable CORS for everything
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
+}))
+
 app.use(express.json({ limit: "10mb" }))
 app.disable("x-powered-by")
 
 const PORT = process.env.PORT || 5000
-
-/* ===============================
-   🔐 CONFIG
-================================ */
-
 const PRIVATE_API_URL = "https://drex-database-dsr.onrender.com"
-const DATABASE_API_KEY = "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==CREATED-BY-DREXMOND"
+
+// 🔥 EXACT MATCH with database API key
+const PRIVATE_API_KEY = "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==CREATED-BY-DREXMOND"
+
+// 🔥 INTERNAL SECRET FOR BOT
+const INTERNAL_SECRET = "DSR_INTERNAL_BOT_SECRET_9384x7"
 
 /* ===============================
-   🔥 SECURE ORIGIN CHECK
-================================ */
-
-const ALLOWED_ORIGINS = [
-  "https://demon-slayer.rf.gd",
-  "demon-slayer.rf.gd"
-]
-
-function isAllowedOrigin(origin) {
-  if (!origin) return false
-  return ALLOWED_ORIGINS.some(allowed => 
-    origin === `https://${allowed}` ||
-    origin === `http://${allowed}` ||
-    origin === allowed
-  )
-}
-
-/* ===============================
-   🔥 SECURITY MIDDLEWARE
+   🔥 ULTRA STRICT SECURITY
 ================================ */
 
 app.use((req, res, next) => {
   const origin = req.headers.origin
+  const internalSecret = req.headers['x-internal-secret']
   
+  // 🔥 ALLOW BOT (has internal secret)
+  if (internalSecret === INTERNAL_SECRET) {
+    console.log(`🤖 BOT ALLOWED: ${req.method} ${req.url}`)
+    return next()
+  }
+  
+  // 🔥 BLOCK REQUESTS WITH NO ORIGIN (scrapers/direct calls)
   if (!origin) {
     console.log(`⛔ BLOCKED: No origin - ${req.method} ${req.url}`)
-    return res.status(403).json({ 
-      success: false, 
-      error: "Access denied" 
+    return res.status(403).json({
+      success: false,
+      message: "FORBIDDEN"
     })
   }
   
-  if (!isAllowedOrigin(origin)) {
+  // 🔥 ONLY ALLOW SPECIFIC DOMAINS
+  const allowedDomains = ['demon-slayer.rf.gd', 'localhost', '127.0.0.1']
+  const isAllowed = allowedDomains.some(domain => origin.includes(domain))
+  
+  if (!isAllowed) {
     console.log(`⛔ BLOCKED: ${origin} - ${req.method} ${req.url}`)
-    return res.status(403).json({ 
-      success: false, 
-      error: "Access denied" 
+    return res.status(403).json({
+      success: false,
+      message: "FORBIDDEN"
     })
   }
   
@@ -60,7 +62,7 @@ app.use((req, res, next) => {
 })
 
 /* ===============================
-   🔥 PROXY TO DATABASE
+   🔥 SIMPLIFIED API REQUEST
 ================================ */
 
 async function callDatabase(endpoint, method = "GET", body = null) {
@@ -69,8 +71,8 @@ async function callDatabase(endpoint, method = "GET", body = null) {
       method: method,
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": DATABASE_API_KEY,
-        "Authorization": `Bearer ${DATABASE_API_KEY}`
+        "x-api-key": PRIVATE_API_KEY,
+        "Authorization": `Bearer ${PRIVATE_API_KEY}`
       }
     }
     
@@ -78,263 +80,161 @@ async function callDatabase(endpoint, method = "GET", body = null) {
       options.body = JSON.stringify(body)
     }
     
-    console.log(`  📤 ${method} ${endpoint}`)
+    console.log(`📤 ${method} ${PRIVATE_API_URL}${endpoint}`)
+    if (body) console.log(`📦 Body:`, body)
+    
     const response = await fetch(`${PRIVATE_API_URL}${endpoint}`, options)
     const data = await response.json()
-    console.log(`  📥 Response:`, JSON.stringify(data).substring(0, 200) + (JSON.stringify(data).length > 200 ? '...' : ''))
+    
+    console.log(`📥 Response:`, data)
     return data
     
   } catch (err) {
-    console.error(`  ❌ Error: ${err.message}`)
-    return { 
-      success: false, 
-      error: err.message || "Database request failed" 
-    }
+    console.error("❌ Database error:", err)
+    return { success: false, error: err.message }
   }
 }
 
 /* ===============================
-   🔥 NORMALIZE RESPONSE
+   HEALTH CHECK
 ================================ */
 
-function normalizeResponse(dbResult) {
-  if (dbResult.success === false) {
-    return {
-      exists: false,
-      data: null,
-      success: false,
-      error: dbResult.error || "Database error"
-    }
-  }
-  
-  const data = dbResult.data || null
-  const exists = data !== null && 
-                 data !== undefined && 
-                 !(Array.isArray(data) && data.length === 0)
-  
-  return {
-    exists: exists,
-    data: data,
+app.get("/", (req, res) => {
+  res.json({
     success: true,
-    error: null
-  }
-}
+    name: "DSR Backend",
+    status: "online"
+  })
+})
 
 /* ===============================
-   🔥 ENDPOINTS
+   🔥 PLAYER ENDPOINTS
 ================================ */
 
-app.get("/get/:collection/:id", async (req, res) => {
-  console.log(`📂 GET /${req.params.collection}/${req.params.id}`)
+app.post("/register", async (req, res) => {
   try {
-    const result = await callDatabase(`/${req.params.collection}/${req.params.id}`, "GET")
-    res.json(normalizeResponse(result))
+    const { id, data } = req.body
+    
+    if (!id || !data) {
+      return res.status(400).json({ success: false, error: "Missing fields" })
+    }
+    
+    const result = await callDatabase(`/player/${id}`, "POST", { data })
+    res.json(result)
+    
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      exists: false,
-      data: null,
-      success: false,
-      error: err.message
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-app.get("/getAll/:collection", async (req, res) => {
-  console.log(`📂 GET ALL /${req.params.collection}`)
+app.get("/player/:id", async (req, res) => {
   try {
-    const result = await callDatabase(`/${req.params.collection}`, "GET")
-    const data = Array.isArray(result.data) ? result.data : []
-    res.json({
-      success: true,
-      data: data
-    })
+    const result = await callDatabase(`/player/${req.params.id}`, "GET")
+    res.json(result)
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      data: []
-    })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+app.patch("/player/:id", async (req, res) => {
+  try {
+    const result = await callDatabase(`/player/${req.params.id}`, "PATCH", { data: req.body })
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+app.delete("/player/:id", async (req, res) => {
+  try {
+    const result = await callDatabase(`/player/${req.params.id}`, "DELETE")
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+app.get("/players", async (req, res) => {
+  try {
+    const result = await callDatabase(`/player`, "GET")
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, data: [] })
+  }
+})
+
+/* ===============================
+   🔥 GENERIC COLLECTION ENDPOINTS
+================================ */
+
+app.get("/get/:collection/:id", async (req, res) => {
+  try {
+    const result = await callDatabase(`/${req.params.collection}/${req.params.id}`, "GET")
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
 app.post("/set/:collection/:id", async (req, res) => {
-  console.log(`📝 SET /${req.params.collection}/${req.params.id}`)
   try {
+    // 🔥 CRITICAL: Wrap data for database
     const result = await callDatabase(
       `/${req.params.collection}/${req.params.id}`,
       "POST",
       { data: req.body }
     )
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
+    res.json(result)
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
 app.patch("/update/:collection/:id", async (req, res) => {
-  console.log(`✏️ UPDATE /${req.params.collection}/${req.params.id}`)
   try {
     const result = await callDatabase(
       `/${req.params.collection}/${req.params.id}`,
       "PATCH",
       { data: req.body }
     )
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
+    res.json(result)
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
 app.delete("/delete/:collection/:id", async (req, res) => {
-  console.log(`🗑️ DELETE /${req.params.collection}/${req.params.id}`)
   try {
     const result = await callDatabase(`/${req.params.collection}/${req.params.id}`, "DELETE")
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
+    res.json(result)
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-app.post("/register", async (req, res) => {
-  console.log(`📝 REGISTER: ${req.body.id || 'unknown'}`)
+app.get("/getAll/:collection", async (req, res) => {
   try {
-    const { id, data } = req.body
-    if (!id || !data) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing fields"
-      })
-    }
-    const result = await callDatabase(`/player/${id}`, "POST", { data })
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
+    const result = await callDatabase(`/${req.params.collection}`, "GET")
+    res.json(result)
   } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
+    res.status(500).json({ success: false, error: err.message, data: [] })
   }
-})
-
-app.get("/player/:id", async (req, res) => {
-  console.log(`👤 GET PLAYER: ${req.params.id}`)
-  try {
-    const result = await callDatabase(`/player/${req.params.id}`, "GET")
-    res.json(normalizeResponse(result))
-  } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      exists: false,
-      data: null,
-      success: false,
-      error: err.message
-    })
-  }
-})
-
-app.patch("/player/:id", async (req, res) => {
-  console.log(`✏️ UPDATE PLAYER: ${req.params.id}`)
-  try {
-    const result = await callDatabase(
-      `/player/${req.params.id}`,
-      "PATCH",
-      { data: req.body }
-    )
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
-  } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
-  }
-})
-
-app.delete("/player/:id", async (req, res) => {
-  console.log(`🗑️ DELETE PLAYER: ${req.params.id}`)
-  try {
-    const result = await callDatabase(`/player/${req.params.id}`, "DELETE")
-    res.json({
-      success: result.success !== false,
-      error: result.error || null
-    })
-  } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message
-    })
-  }
-})
-
-app.get("/players", async (req, res) => {
-  console.log(`👥 GET ALL PLAYERS`)
-  try {
-    const result = await callDatabase(`/player`, "GET")
-    const data = Array.isArray(result.data) ? result.data : []
-    res.json({
-      success: true,
-      data: data
-    })
-  } catch (err) {
-    console.error(`❌ Error: ${err.message}`)
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      data: []
-    })
-  }
-})
-
-app.get("/", (req, res) => {
-  console.log(`🏥 HEALTH CHECK`)
-  res.json({
-    success: true,
-    status: "online",
-    protected: true
-  })
 })
 
 /* ===============================
-   START
+   🔥 TEST ENDPOINT
 ================================ */
 
+app.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is working!",
+    timestamp: new Date().toISOString()
+  })
+})
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n${'='.repeat(50)}`)
-  console.log(`🚀 SECURE BACKEND RUNNING`)
-  console.log(`${'='.repeat(50)}`)
-  console.log(`📡 Port: ${PORT}`)
-  console.log(`🌐 Allowed Origins: ${ALLOWED_ORIGINS.join(', ')}`)
-  console.log(`🔐 Database: ${PRIVATE_API_URL}`)
-  console.log(`✅ Response: { exists, data, success, error }`)
-  console.log(`${'='.repeat(50)}\n`)
+  console.log(`🚀 Backend running on ${PORT}`)
+  console.log(`🔐 Using API Key: ${PRIVATE_API_KEY.substring(0, 20)}...`)
+  console.log(`📡 Database: ${PRIVATE_API_URL}`)
 })
