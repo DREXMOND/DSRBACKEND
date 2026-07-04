@@ -21,10 +21,23 @@ app.disable("x-powered-by")
 
 const PORT = process.env.PORT || 5000
 
+/*
+  🔐 PRIVATE DATABASE API
+*/
+
 const PRIVATE_API_URL = "https://drex-database-dsr.onrender.com"
 
+/*
+  🔐 REAL PRIVATE API KEY
+  THIS MUST MATCH THE DATABASE API KEY
+*/
+
 const PRIVATE_API_KEY = process.env.PRIVATE_API_KEY ||
-  "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==DSR-CREATED-BY-DREXMOND"
+  "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==CREATED-BY-DREXMOND"
+
+/*
+  🔐 INTERNAL SECRET
+*/
 
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET ||
   "DEXA_INTERNAL_SECRET_9384"
@@ -104,6 +117,7 @@ async function apiRequest(endpoint, options = {}){
 ================================ */
 
 app.get("/", (req,res)=>{
+
   res.json({
     success: true,
     name: "DEXA SAFE BACKEND",
@@ -112,40 +126,185 @@ app.get("/", (req,res)=>{
 })
 
 /* ===============================
-   🔥 ADDED: GENERIC GET ENDPOINT
+   🔥 FIXED: REGISTER PLAYER
 ================================ */
 
+app.post("/register", async(req,res)=>{
+
+  try{
+
+    const { id, data } = req.body
+
+    if(!id || !data){
+      return res.status(400).json({
+        success: false,
+        error: "Missing fields"
+      })
+    }
+
+    // 🔥 FIX: Use correct collection format
+    const result = await apiRequest(
+      `/player/${id}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ data }) // Database API expects { data: {...} }
+      }
+    )
+
+    res.json(result)
+
+  }catch(err){
+
+    console.error(err)
+
+    res.status(500).json({
+      success: false,
+      error: "Register failed"
+    })
+  }
+})
+
+/* ===============================
+   🔥 FIXED: GET PLAYER
+================================ */
+
+app.get("/player/:id", async(req,res)=>{
+
+  try{
+
+    const { id } = req.params
+
+    // 🔥 FIX: Use correct collection format
+    const result = await apiRequest(
+      `/player/${id}`,
+      {
+        method: "GET"
+      }
+    )
+
+    // 🔥 Database API returns { exists: true, data: {...} }
+    res.json(result)
+
+  }catch(err){
+
+    console.error(err)
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to get player"
+    })
+  }
+})
+
+/* ===============================
+   🔥 FIXED: UPDATE PLAYER
+================================ */
+
+app.patch("/player/:id", async(req,res)=>{
+
+  try{
+
+    const { id } = req.params
+
+    // 🔥 FIX: Database API expects { data: {...} }
+    const result = await apiRequest(
+      `/player/${id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ data: req.body })
+      }
+    )
+
+    res.json(result)
+
+  }catch(err){
+
+    console.error(err)
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to update player"
+    })
+  }
+})
+
+/* ===============================
+   🔥 FIXED: DELETE PLAYER
+================================ */
+
+app.delete("/player/:id", async(req,res)=>{
+
+  try{
+
+    const { id } = req.params
+
+    const result = await apiRequest(
+      `/player/${id}`,
+      {
+        method: "DELETE"
+      }
+    )
+
+    res.json(result)
+
+  }catch(err){
+
+    console.error(err)
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete player"
+    })
+  }
+})
+
+/* ===============================
+   🔥 FIXED: GET ALL PLAYERS
+================================ */
+
+app.get("/players", async(req,res)=>{
+
+  try{
+
+    const result = await apiRequest(
+      `/player`,
+      {
+        method: "GET"
+      }
+    )
+
+    // 🔥 Database API returns { data: [...] }
+    res.json(result)
+
+  }catch(err){
+
+    console.error(err)
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to get players",
+      data: []
+    })
+  }
+})
+
+/* ===============================
+   🔥 ADDED: GENERIC ENDPOINTS FOR OTHER COLLECTIONS
+================================ */
+
+// GET any collection
 app.get("/get/:collection/:id", async(req,res)=>{
 
   try{
 
     const { collection, id } = req.params
 
-    // 🔥 Handle onWa specially
-    if(collection === "onWa"){
-
-      const result = await apiRequest(
-        `/onWa/${id}`,
-        { method: "GET" }
-      )
-
-      // 🔥 FIX: Return proper structure
-      return res.json({
-        exists: result.success && result.data !== undefined,
-        data: result.data || {}
-      })
-    }
-
-    // 🔥 Generic collection handler
     const result = await apiRequest(
       `/${collection}/${id}`,
       { method: "GET" }
     )
 
-    res.json({
-      exists: result.success && result.data !== undefined,
-      data: result.data || {}
-    })
+    res.json(result)
 
   }catch(err){
 
@@ -158,10 +317,7 @@ app.get("/get/:collection/:id", async(req,res)=>{
   }
 })
 
-/* ===============================
-   🔥 ADDED: GENERIC SET ENDPOINT
-================================ */
-
+// SET any collection
 app.post("/set/:collection/:id", async(req,res)=>{
 
   try{
@@ -169,26 +325,11 @@ app.post("/set/:collection/:id", async(req,res)=>{
     const { collection, id } = req.params
     const data = req.body
 
-    // 🔥 Handle onWa specially
-    if(collection === "onWa"){
-
-      const result = await apiRequest(
-        `/onWa/${id}`,
-        {
-          method: "POST",
-          body: JSON.stringify(data)
-        }
-      )
-
-      return res.json(result)
-    }
-
-    // 🔥 Generic collection handler
     const result = await apiRequest(
       `/${collection}/${id}`,
       {
         method: "POST",
-        body: JSON.stringify(data)
+        body: JSON.stringify({ data })
       }
     )
 
@@ -205,10 +346,7 @@ app.post("/set/:collection/:id", async(req,res)=>{
   }
 })
 
-/* ===============================
-   🔥 ADDED: GENERIC UPDATE ENDPOINT
-================================ */
-
+// UPDATE any collection
 app.patch("/update/:collection/:id", async(req,res)=>{
 
   try{
@@ -216,12 +354,11 @@ app.patch("/update/:collection/:id", async(req,res)=>{
     const { collection, id } = req.params
     const data = req.body
 
-    // 🔥 FIX: Don't nest data
     const result = await apiRequest(
       `/${collection}/${id}`,
       {
         method: "PATCH",
-        body: JSON.stringify(data)
+        body: JSON.stringify({ data })
       }
     )
 
@@ -238,10 +375,7 @@ app.patch("/update/:collection/:id", async(req,res)=>{
   }
 })
 
-/* ===============================
-   🔥 ADDED: GENERIC DELETE ENDPOINT
-================================ */
-
+// DELETE any collection
 app.delete("/delete/:collection/:id", async(req,res)=>{
 
   try{
@@ -266,10 +400,7 @@ app.delete("/delete/:collection/:id", async(req,res)=>{
   }
 })
 
-/* ===============================
-   🔥 ADDED: GENERIC GET ALL ENDPOINT
-================================ */
-
+// GET ALL documents in a collection
 app.get("/getAll/:collection", async(req,res)=>{
 
   try{
@@ -281,11 +412,7 @@ app.get("/getAll/:collection", async(req,res)=>{
       { method: "GET" }
     )
 
-    // 🔥 FIX: Return proper structure with data array
-    res.json({
-      success: true,
-      data: result.data || []
-    })
+    res.json(result)
 
   }catch(err){
 
@@ -300,154 +427,10 @@ app.get("/getAll/:collection", async(req,res)=>{
 })
 
 /* ===============================
-   ORIGINAL ENDPOINTS (KEPT FOR BACKWARDS)
-================================ */
-
-app.post("/register", async(req,res)=>{
-
-  try{
-
-    const { id, data } = req.body
-
-    if(!id || !data){
-      return res.status(400).json({
-        success: false,
-        error: "Missing fields"
-      })
-    }
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      {
-        method: "POST",
-        body: JSON.stringify(data)
-      }
-    )
-
-    res.json(result)
-
-  }catch(err){
-
-    console.error(err)
-
-    res.status(500).json({
-      success: false,
-      error: "Register failed"
-    })
-  }
-})
-
-app.get("/player/:id", async(req,res)=>{
-
-  try{
-
-    const { id } = req.params
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      { method: "GET" }
-    )
-
-    // 🔥 FIX: Return proper structure
-    res.json({
-      exists: result.success && result.data !== undefined,
-      data: result.data || {}
-    })
-
-  }catch(err){
-
-    console.error(err)
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to get player"
-    })
-  }
-})
-
-app.patch("/player/:id", async(req,res)=>{
-
-  try{
-
-    const { id } = req.params
-
-    // 🔥 FIX: Don't nest data
-    const result = await apiRequest(
-      `/player/${id}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(req.body)
-      }
-    )
-
-    res.json(result)
-
-  }catch(err){
-
-    console.error(err)
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to update player"
-    })
-  }
-})
-
-app.delete("/player/:id", async(req,res)=>{
-
-  try{
-
-    const { id } = req.params
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      { method: "DELETE" }
-    )
-
-    res.json(result)
-
-  }catch(err){
-
-    console.error(err)
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete player"
-    })
-  }
-})
-
-app.get("/players", async(req,res)=>{
-
-  try{
-
-    const result = await apiRequest(
-      `/player`,
-      { method: "GET" }
-    )
-
-    // 🔥 FIX: Return proper structure
-    res.json({
-      success: true,
-      data: result.data || []
-    })
-
-  }catch(err){
-
-    console.error(err)
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to get players",
-      data: []
-    })
-  }
-})
-
-/* ===============================
    START SERVER
 ================================ */
 
 app.listen(PORT, "0.0.0.0", ()=>{
+
   console.log(`🚀 SAFE BACKEND RUNNING ON ${PORT}`)
 })
