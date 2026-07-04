@@ -1,85 +1,69 @@
 import express from "express"
 import cors from "cors"
 
-/* ===============================
-   APP
-================================ */
-
 const app = express()
 
+// 🔥 CRITICAL: Enable CORS for everything
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
+}))
+
 app.use(express.json({ limit: "10mb" }))
-app.use(cors())
 app.disable("x-powered-by")
 
-/* ===============================
-   CONFIG
-================================ */
-
 const PORT = process.env.PORT || 5000
-
 const PRIVATE_API_URL = "https://drex-database-dsr.onrender.com"
 
-const PRIVATE_API_KEY = process.env.PRIVATE_API_KEY ||
-  "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==CREATED-BY-DREXMOND"
+// 🔥 EXACT MATCH with database API key
+const PRIVATE_API_KEY = "DSR_9fA7xQwLmP2vNcY8kRtB4sZhE6uJiX3mAaT1oP==CREATED-BY-DREXMOND"
 
-/* ===============================
-   ALLOWED FRONTENDS
-================================ */
-
-const allowedOrigins = [
-  "https://demon-slayer.rf.gd",
-  "http://127.0.0.1:5500",
-  "http://localhost:5500"
-]
-
-/* ===============================
-   FRONTEND BLOCKER
-================================ */
-
+// 🔥 SIMPLE DOMAIN CHECK (MORE PERMISSIVE)
 app.use((req, res, next) => {
   const origin = req.headers.origin
-
-  if (!origin) return next()
-
-  if (!allowedOrigins.includes(origin)) {
+  
+  // Allow all or specific domains
+  if (origin && !origin.includes('demon-slayer.rf.gd') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
     return res.status(403).json({
       success: false,
-      message: "FORBIDDEN - FRONTEND BLOCKED"
+      message: "FORBIDDEN"
     })
   }
-
   next()
 })
 
 /* ===============================
-   PRIVATE API REQUEST
+   🔥 SIMPLIFIED API REQUEST
 ================================ */
 
-async function apiRequest(endpoint, options = {}) {
+async function callDatabase(endpoint, method = "GET", body = null) {
   try {
-    console.log(`📤 Forwarding to: ${PRIVATE_API_URL}${endpoint}`)
-    console.log(`📦 Body:`, options.body ? JSON.parse(options.body) : "NONE")
-    
-    const response = await fetch(`${PRIVATE_API_URL}${endpoint}`, {
-      ...options,
+    const options = {
+      method: method,
       headers: {
         "Content-Type": "application/json",
         "x-api-key": PRIVATE_API_KEY,
-        "Authorization": `Bearer ${PRIVATE_API_KEY}`,
-        ...options.headers
+        "Authorization": `Bearer ${PRIVATE_API_KEY}`
       }
-    })
-
+    }
+    
+    if (body) {
+      options.body = JSON.stringify(body)
+    }
+    
+    console.log(`📤 ${method} ${PRIVATE_API_URL}${endpoint}`)
+    if (body) console.log(`📦 Body:`, body)
+    
+    const response = await fetch(`${PRIVATE_API_URL}${endpoint}`, options)
     const data = await response.json()
+    
     console.log(`📥 Response:`, data)
     return data
-
+    
   } catch (err) {
-    console.error("PRIVATE API ERROR:", err)
-    return {
-      success: false,
-      error: err.message || "Backend request failed"
-    }
+    console.error("❌ Database error:", err)
+    return { success: false, error: err.message }
   }
 }
 
@@ -90,268 +74,139 @@ async function apiRequest(endpoint, options = {}) {
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    name: "DEXA SAFE BACKEND",
-    secured: true
+    name: "DSR Backend",
+    status: "online"
   })
 })
 
 /* ===============================
-   REGISTER PLAYER
+   🔥 PLAYER ENDPOINTS
 ================================ */
 
 app.post("/register", async (req, res) => {
   try {
     const { id, data } = req.body
-
+    
     if (!id || !data) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing fields"
-      })
+      return res.status(400).json({ success: false, error: "Missing fields" })
     }
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      {
-        method: "POST",
-        body: JSON.stringify({ data })
-      }
-    )
-
+    
+    const result = await callDatabase(`/player/${id}`, "POST", { data })
     res.json(result)
-
+    
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Register failed"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
-
-/* ===============================
-   GET PLAYER
-================================ */
 
 app.get("/player/:id", async (req, res) => {
   try {
-    const { id } = req.params
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      { method: "GET" }
-    )
-
+    const result = await callDatabase(`/player/${req.params.id}`, "GET")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to get player"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
-
-/* ===============================
-   UPDATE PLAYER
-================================ */
 
 app.patch("/player/:id", async (req, res) => {
   try {
-    const { id } = req.params
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ data: req.body })
-      }
-    )
-
+    const result = await callDatabase(`/player/${req.params.id}`, "PATCH", { data: req.body })
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to update player"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
-
-/* ===============================
-   DELETE PLAYER
-================================ */
 
 app.delete("/player/:id", async (req, res) => {
   try {
-    const { id } = req.params
-
-    const result = await apiRequest(
-      `/player/${id}`,
-      { method: "DELETE" }
-    )
-
+    const result = await callDatabase(`/player/${req.params.id}`, "DELETE")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete player"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
-
-/* ===============================
-   GET ALL PLAYERS
-================================ */
 
 app.get("/players", async (req, res) => {
   try {
-    const result = await apiRequest(
-      `/player`,
-      { method: "GET" }
-    )
-
+    const result = await callDatabase(`/player`, "GET")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to get players",
-      data: []
-    })
+    res.status(500).json({ success: false, error: err.message, data: [] })
   }
 })
 
 /* ===============================
-   🔥 FIXED GENERIC ENDPOINTS - WRAP DATA CORRECTLY
+   🔥 GENERIC COLLECTION ENDPOINTS
 ================================ */
 
-// GET any collection document
 app.get("/get/:collection/:id", async (req, res) => {
   try {
-    const { collection, id } = req.params
-
-    const result = await apiRequest(
-      `/${collection}/${id}`,
-      { method: "GET" }
-    )
-
+    const result = await callDatabase(`/${req.params.collection}/${req.params.id}`, "GET")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to get document"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-// 🔥 FIXED: SET any collection document - WRAP DATA
 app.post("/set/:collection/:id", async (req, res) => {
   try {
-    const { collection, id } = req.params
-    const data = req.body // This is the raw data from frontend
-
-    // 🔥 CRITICAL FIX: Wrap data in { data: ... }
-    const result = await apiRequest(
-      `/${collection}/${id}`,
-      {
-        method: "POST",
-        body: JSON.stringify({ data })
-      }
+    // 🔥 CRITICAL: Wrap data for database
+    const result = await callDatabase(
+      `/${req.params.collection}/${req.params.id}`,
+      "POST",
+      { data: req.body }
     )
-
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to set document"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-// 🔥 FIXED: UPDATE any collection document - WRAP DATA
 app.patch("/update/:collection/:id", async (req, res) => {
   try {
-    const { collection, id } = req.params
-    const data = req.body
-
-    // 🔥 CRITICAL FIX: Wrap data in { data: ... }
-    const result = await apiRequest(
-      `/${collection}/${id}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ data })
-      }
+    const result = await callDatabase(
+      `/${req.params.collection}/${req.params.id}`,
+      "PATCH",
+      { data: req.body }
     )
-
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to update document"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-// DELETE any collection document
 app.delete("/delete/:collection/:id", async (req, res) => {
   try {
-    const { collection, id } = req.params
-
-    const result = await apiRequest(
-      `/${collection}/${id}`,
-      { method: "DELETE" }
-    )
-
+    const result = await callDatabase(`/${req.params.collection}/${req.params.id}`, "DELETE")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete document"
-    })
+    res.status(500).json({ success: false, error: err.message })
   }
 })
 
-// GET ALL documents in any collection
 app.get("/getAll/:collection", async (req, res) => {
   try {
-    const { collection } = req.params
-
-    const result = await apiRequest(
-      `/${collection}`,
-      { method: "GET" }
-    )
-
+    const result = await callDatabase(`/${req.params.collection}`, "GET")
     res.json(result)
-
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      success: false,
-      error: "Failed to get collection",
-      data: []
-    })
+    res.status(500).json({ success: false, error: err.message, data: [] })
   }
 })
 
 /* ===============================
-   START SERVER
+   🔥 TEST ENDPOINT
 ================================ */
 
+app.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is working!",
+    timestamp: new Date().toISOString()
+  })
+})
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 SAFE BACKEND RUNNING ON ${PORT}`)
-  console.log(`🔐 Database URL: ${PRIVATE_API_URL}`)
+  console.log(`🚀 Backend running on ${PORT}`)
+  console.log(`🔐 Using API Key: ${PRIVATE_API_KEY.substring(0, 20)}...`)
+  console.log(`📡 Database: ${PRIVATE_API_URL}`)
 })
